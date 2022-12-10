@@ -1,25 +1,63 @@
-const User = require( '#models/user')
-const config = require( '#config')
+const Travel = require('#models/travel')
+const config = require('#config')
 
 const { IgApiClient } = require('instagram-private-api');
 const axios = require('axios');
 const CronJob = require("cron").CronJob;
-const InstagramGetPosts = require('instagram-get-posts');
 
 
-exports.post =  async function (req ,res){
+exports.post = async function () {
     const ig = new IgApiClient();
 
-    ig.state.generateDevice(process.env.IG_USERNAME);
-    await ig.account.login(process.env.IG_USERNAME, process.env.IG_PASSWORD);
+    ig.state.generateDevice(config.userName);
+    await ig.account.login(config.userName, config.password);
 
-    const imageBuffer = await axios.get('https://cdn.pixabay.com/photo/2015/04/23/22/00/tree-736885_960_720.jpg', {
-        responseType: 'arraybuffer'
-    });
 
-    console.log("sfdgfhgjhkkjgfdsa");
-    // await ig.publish.photo({
-    //     file: imageBuffer.data,
-    //     caption: 'Really nice photo from the internet!',
-    // });    
+
+    // const cronInsta = new CronJob("30 5 * * *", async () => {
+    //     postToInsta();
+    // });
+
+    const posts = await Travel.find().limit(2).sort({ likes: -1 })
+
+    posts.map(async post => {
+
+        let mediaBuffers = post.links.map( link => {
+            return new Promise((resolve, reject) => {
+
+                resolve( axios.get( link, { responseType: 'arraybuffer' }).then((res)=>{
+                  return  res.data 
+               }));
+              });
+             
+        })
+
+        Promise.all(mediaBuffers).then(results => {
+            // results is an array of the resolved values
+             mediaBuffers = results
+        });
+
+        // console.log( await mediaBuffers);
+        if (post.type === "video") {
+            await ig.publish.video({
+                file: mediaBuffers[0],
+                caption: post.caption
+            })
+        } else {
+           let items = await mediaBuffers.map((med)=>{
+                let item = {
+                  file: med,
+                } 
+                return item
+            })
+
+            console.log(items);
+            await ig.publish.album({
+                items: items,
+                caption: post.caption,
+            })
+        }
+    })
+
+
 }
